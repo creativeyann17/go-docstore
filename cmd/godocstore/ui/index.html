@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>godocstore</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #16181d; --panel: #1e2128; --text: #e8eaed; --muted: #8b919c;
+  --accent: #4f9cf0; --track: #2c313a; --red: #e06c75; --green: #98c379;
+  --str: #98c379; --num: #d19a66; --key: #61afef; --bool: #c678dd;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; background: var(--bg); color: var(--text);
+  font: 13px/1.5 system-ui, "Segoe UI", sans-serif; }
+#app { display: flex; height: 100vh; }
+
+/* left: collections */
+#collections { width: 200px; flex-shrink: 0; background: var(--panel);
+  padding: 12px; overflow-y: auto; border-right: 1px solid var(--track); }
+#collections h1 { font-size: 14px; color: var(--accent); margin-bottom: 10px;
+  cursor: pointer; user-select: none; }
+#collections h1:hover { text-decoration: underline; }
+.coll { display: flex; justify-content: space-between; padding: 6px 8px;
+  border-radius: 6px; cursor: pointer; }
+.coll:hover { background: var(--track); }
+.coll.active { background: var(--accent); color: #fff; }
+.coll .n { color: var(--muted); font-variant-numeric: tabular-nums; }
+.coll.active .n { color: #fff; }
+
+/* middle: ids */
+#ids { width: 260px; flex-shrink: 0; display: flex; flex-direction: column;
+  border-right: 1px solid var(--track); }
+#ids .tools { padding: 10px 10px 6px; display: flex; align-items: center; gap: 6px; }
+#ids input[type=text] { flex: 1; }
+/* min-height:0 overrides the flex default of min-height:auto, which
+   would otherwise let this list grow to its full content height and
+   push/overflow the page instead of scrolling within its own box. */
+#idlist { overflow-y: auto; flex: 1; min-height: 0; padding: 0 10px 10px; }
+.id { padding: 5px 8px; border-radius: 5px; cursor: pointer; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; font-family: monospace; font-size: 12px; }
+.id:hover { background: var(--track); }
+.id.active { background: var(--accent); color: #fff; }
+/* After .active on purpose: a selected-AND-deleted row should still
+   read as deleted (red), not lose that signal just because it's open. */
+.id.deleted { color: var(--red); }
+#deleted-toggle { display: flex; align-items: center; gap: 4px; color: var(--muted);
+  font-size: 11px; cursor: pointer; user-select: none; white-space: nowrap; }
+#deleted-toggle input { margin: 0; }
+
+/* main: doc / find / sql */
+#main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+#tabs { display: flex; align-items: center; gap: 4px; padding: 10px 12px 0; }
+.tab { padding: 6px 16px; border-radius: 6px 6px 0 0; cursor: pointer;
+  color: var(--muted); background: transparent; border: none; font-size: 13px; }
+.tab.active { background: var(--panel); color: var(--text); }
+#auto-refresh { display: flex; align-items: center; gap: 5px; color: var(--muted);
+  font-size: 11px; user-select: none; cursor: pointer; }
+#auto-refresh input { margin: 0; }
+#btn-refresh { background: transparent; border: 1px solid var(--track); border-radius: 6px;
+  color: var(--muted); cursor: pointer; padding: 3px 6px; font-size: 13px; line-height: 1; }
+#btn-refresh:hover { border-color: var(--accent); color: var(--accent); }
+#btn-refresh.spin { animation: spin 0.6s linear; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.pane { flex: 1; background: var(--panel); margin: 0 12px 12px;
+  border-radius: 0 8px 8px 8px; padding: 14px; overflow: auto;
+  display: none; flex-direction: column; gap: 10px; }
+.pane.active { display: flex; }
+
+/* doc viewer */
+/* Two tight lines (id, then timestamps) instead of one long one — long
+   ids used to force the whole toolbar row to wrap unpredictably.
+   line-height trimmed so the pair costs barely more vertical space
+   than the old single line did. */
+#meta { color: var(--muted); font-size: 11px; font-family: monospace;
+  line-height: 1.35; overflow: hidden; }
+#meta .id-line { color: var(--text); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+#meta .dates-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#meta .del { color: var(--red); font-weight: 600; }
+.sep { align-self: stretch; width: 1px; background: var(--muted); opacity: 0.4; margin: 0 5px; }
+#docview { flex: 1; overflow: auto; font-family: monospace; font-size: 12.5px;
+  white-space: pre; background: var(--bg); border-radius: 6px; padding: 12px; }
+#docedit { flex: 1; display: none; font-family: monospace; font-size: 12.5px;
+  background: var(--bg); color: var(--text); border: 1px solid var(--accent);
+  border-radius: 6px; padding: 12px; resize: none; outline: none; }
+.j-key { color: var(--key); } .j-str { color: var(--str); }
+.j-num { color: var(--num); } .j-bool { color: var(--bool); }
+
+.row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+button, select, input[type=text] { background: var(--bg); color: var(--text);
+  border: 1px solid var(--track); border-radius: 6px; padding: 6px 12px;
+  font-size: 12.5px; }
+button { cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button.danger:hover { border-color: var(--red); color: var(--red); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+input[type=text], select { outline: none; }
+input[type=text]:focus { border-color: var(--accent); }
+#status { color: var(--muted); font-size: 12px; min-height: 16px; }
+#status.err { color: var(--red); }
+#status.ok { color: var(--green); }
+textarea#sqlbox { height: 90px; font-family: monospace; font-size: 12.5px;
+  background: var(--bg); color: var(--text); border: 1px solid var(--track);
+  border-radius: 6px; padding: 10px; resize: vertical; outline: none; }
+#findres, #sqlres { flex: 1; overflow: auto; font-family: monospace;
+  font-size: 12px; white-space: pre; background: var(--bg);
+  border-radius: 6px; padding: 12px; }
+.hit { color: var(--accent); cursor: pointer; }
+.hit:hover { text-decoration: underline; }
+.empty { color: var(--muted); padding: 8px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <nav id="collections">
+    <h1>godocstore</h1>
+    <div id="colllist"></div>
+  </nav>
+  <section id="ids">
+    <div class="tools">
+      <input type="text" id="idfilter" placeholder="filter ids…" />
+      <label id="deleted-toggle" title="show soft-deleted documents instead">
+        <input type="checkbox" id="deleted-toggle-chk" /> deleted
+      </label>
+    </div>
+    <div id="idlist"></div>
+  </section>
+  <section id="main">
+    <div id="tabs">
+      <button class="tab active" data-pane="doc">Document</button>
+      <button class="tab" data-pane="find">Find</button>
+      <button class="tab" data-pane="sql">SQL</button>
+      <span style="flex:1"></span>
+      <label id="auto-refresh"><input type="checkbox" id="auto-refresh-chk" /> auto-refresh (3s)</label>
+      <button id="btn-refresh" title="refresh now">⟳</button>
+    </div>
+
+    <div class="pane active" id="pane-doc">
+      <div class="row">
+        <div id="meta"><div class="id-line">no document selected</div></div>
+        <span style="flex:1"></span>
+        <button id="btn-copy" title="copy JSON to clipboard (the edited version, if editing)">⧉ Copy</button>
+        <button id="btn-edit">Edit</button>
+        <button id="btn-save" class="primary" style="display:none">Save</button>
+        <button id="btn-cancel" style="display:none">Cancel</button>
+        <button id="btn-restore" style="display:none">Restore</button>
+        <button id="btn-soft" class="danger">Soft delete</button>
+        <span class="sep"></span>
+        <button id="btn-del" class="danger">Delete</button>
+        <button id="btn-purge" class="danger" style="display:none">Purge</button>
+      </div>
+      <pre id="docview"></pre>
+      <textarea id="docedit" spellcheck="false"></textarea>
+      <div id="status"></div>
+    </div>
+
+    <div class="pane" id="pane-find">
+      <div class="row">
+        <input type="text" id="f-path" placeholder="login" style="width:160px" list="f-path-list" />
+        <datalist id="f-path-list"></datalist>
+        <select id="f-op"><option>=</option><option>!=</option><option>&lt;</option><option>&gt;</option><option>like</option></select>
+        <input type="text" id="f-value" placeholder="value ('%' with like)" style="flex:1" />
+        <label style="color:var(--muted)" title="By default a value that looks numeric (e.g. 42) is compared as a number. Check this to force a text comparison instead — e.g. a login that happens to be all digits.">
+          <input type="checkbox" id="f-string" /> as text
+        </label>
+        <button id="f-run" class="primary">Find</button>
+      </div>
+      <div id="findres"><div class="empty">json_extract(doc, path) op value — results are clickable</div></div>
+    </div>
+
+    <div class="pane" id="pane-sql">
+      <textarea id="sqlbox" spellcheck="false" placeholder="SELECT id, json_extract(doc,'$.login') AS login FROM c_users"></textarea>
+      <div class="row"><button id="sql-run" class="primary">Run</button>
+        <span style="color:var(--muted);font-size:11px">tables are named c_&lt;collection&gt;</span></div>
+      <div id="sqlres"></div>
+    </div>
+  </section>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+let coll = null, docId = null, showDeleted = false, ids = [];
+
+const api = async (method, path, body) => {
+  const res = await fetch(path, { method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ?? undefined });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+};
+const qc = () => `c=${encodeURIComponent(coll)}`;
+const qid = (id) => `${qc()}&id=${encodeURIComponent(id)}`;
+
+// naive but effective JSON syntax highlighter (input is JSON.stringify output)
+function highlight(json) {
+  return json
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/("(?:[^"\\]|\\.)*")(\s*:)?/g, (m, str, colon) =>
+      colon ? `<span class="j-key">${str}</span>${colon}` : `<span class="j-str">${str}</span>`)
+    .replace(/\b(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\b/g, '<span class="j-num">$1</span>')
+    .replace(/\b(true|false|null)\b/g, '<span class="j-bool">$1</span>');
+}
+const status = (msg, cls = '') => { const el = $('#status'); el.textContent = msg; el.className = cls; };
+
+async function loadCollections() {
+  const list = await api('GET', '/api/collections');
+  $('#colllist').innerHTML = list.map((c) =>
+    `<div class="coll ${c.name === coll ? 'active' : ''}" data-c="${c.name}">
+       <span>${c.name}</span><span class="n">${c.count}${c.deleted ? `+${c.deleted}◌` : ''}</span>
+     </div>`).join('') || '<div class="empty">no collections</div>';
+  document.querySelectorAll('.coll').forEach((el) =>
+    el.addEventListener('click', () => {
+      if (coll) saveFindState(coll);
+      coll = el.dataset.c;
+      docId = null; renderDoc(null);
+      loadCollections(); loadIds(); loadKeys(coll);
+      restoreFindState(coll);
+    }));
+}
+
+// Single-flight refresh: reloads collection counts, the id list, and
+// the open document (skipped while mid-edit so a background poll can
+// never clobber unsaved changes). Backs both the manual ⟳ button and
+// the auto-refresh poll — one place, so a database changed from
+// elsewhere (the CLI, the app itself, another tab) shows up without
+// mashing F5.
+let refreshing = false, refreshQueued = false;
+async function refreshAll(spin) {
+  if (refreshing) { refreshQueued = true; return; }
+  refreshing = true;
+  if (spin) { $('#btn-refresh').classList.add('spin'); }
+  try {
+    await loadCollections();
+    if (coll) await loadIds();
+    // A manual click is the user's explicit "get me fresh state" signal
+    // — that's also the natural moment to re-sample the key tree (the
+    // 3s background poll doesn't bother, schemas rarely change that fast).
+    if (spin && coll) { delete pathOptions[coll]; loadKeys(coll); }
+    const editing = $('#docedit').style.display !== 'none';
+    if (docId && !editing) {
+      try { renderDoc(await api('GET', `/api/doc?${qid(docId)}`)); }
+      catch { /* doc may have been deleted elsewhere; leave the view as-is */ }
+    }
+  } finally {
+    refreshing = false;
+    if (spin) { setTimeout(() => $('#btn-refresh').classList.remove('spin'), 600); }
+    if (refreshQueued) { refreshQueued = false; refreshAll(false); }
+  }
+}
+
+$('#btn-refresh').addEventListener('click', () => refreshAll(true));
+
+const AUTO_KEY = 'godocstore.autoRefresh';
+let autoTimer = null;
+function setAutoRefresh(on) {
+  localStorage.setItem(AUTO_KEY, on ? '1' : '0');
+  $('#auto-refresh-chk').checked = on;
+  clearInterval(autoTimer);
+  if (on) autoTimer = setInterval(() => { if (!document.hidden) refreshAll(false); }, 3000);
+}
+$('#auto-refresh-chk').addEventListener('change', (e) => setAutoRefresh(e.target.checked));
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && $('#auto-refresh-chk').checked) refreshAll(false);
+});
+
+async function loadIds() {
+  if (!coll) return;
+  ids = await api('GET', `/api/ids?${qc()}&deleted=${showDeleted ? 1 : 0}`);
+  renderIds();
+}
+function renderIds() {
+  const f = $('#idfilter').value.toLowerCase();
+  const shown = ids.filter((id) => id.toLowerCase().includes(f));
+  // Deleted entries render in red — reinforces that this list is NOT
+  // the live collection, so a click here opens a soft-deleted doc,
+  // not a normal one.
+  const rowClass = showDeleted ? 'id deleted' : 'id';
+  $('#idlist').innerHTML = shown.map((id) =>
+    `<div class="${rowClass} ${id === docId ? 'active' : ''}" data-id="${id}">${id}</div>`).join('')
+    || '<div class="empty">empty</div>';
+  document.querySelectorAll('.id').forEach((el) =>
+    el.addEventListener('click', () => openDoc(el.dataset.id)));
+}
+
+// Find-tab path autocomplete. No fixed schema exists, so the server
+// samples a handful of real documents and returns their key tree
+// (SQLite json_extract syntax, usable in the path field verbatim).
+// Cached per collection — re-sampled only on an explicit manual
+// refresh (see refreshAll), not on every 3s poll.
+let pathOptions = {};
+async function loadKeys(name) {
+  if (pathOptions[name]) { renderPathList(pathOptions[name]); return; }
+  try {
+    const keys = await api('GET', `/api/keys?c=${encodeURIComponent(name)}`);
+    pathOptions[name] = keys;
+    if (name === coll) renderPathList(keys);
+  } catch { /* best-effort: autocomplete just stays empty */ }
+}
+function renderPathList(keys) {
+  $('#f-path-list').innerHTML = keys.map((k) => `<option value="${k}"></option>`).join('');
+}
+
+// Per-collection Find state: switching collections must show THAT
+// collection's last query/results (or a blank slate), never a stale
+// query/results that actually belongs to a different collection.
+let findState = {};
+const FIND_DEFAULT = '<div class="empty">json_extract(doc, path) op value — results are clickable</div>';
+function saveFindState(name) {
+  findState[name] = {
+    path: $('#f-path').value, op: $('#f-op').value, value: $('#f-value').value,
+    asString: $('#f-string').checked, resultsHTML: $('#findres').innerHTML,
+  };
+}
+function restoreFindState(name) {
+  const s = findState[name];
+  $('#f-path').value = s ? s.path : '';
+  $('#f-op').value = s ? s.op : '=';
+  $('#f-value').value = s ? s.value : '';
+  $('#f-string').checked = s ? s.asString : false;
+  $('#findres').innerHTML = s ? s.resultsHTML : FIND_DEFAULT;
+  bindHitLinks(); // restoring innerHTML drops the old listeners
+}
+function bindHitLinks() {
+  document.querySelectorAll('#findres .hit').forEach((el) =>
+    el.addEventListener('click', () => openDoc(el.dataset.id)));
+}
+
+async function openDoc(id) {
+  docId = id;
+  renderIds();
+  try {
+    const d = await api('GET', `/api/doc?${qid(id)}`);
+    renderDoc(d);
+    showPane('doc');
+  } catch (e) { status(e.message, 'err'); }
+}
+function renderDoc(d) {
+  editMode(false);
+  if (!d) {
+    $('#meta').innerHTML = '<div class="id-line">no document selected</div>';
+    $('#docview').innerHTML = '';
+    return;
+  }
+  // Two lines: id on top (can be very long — its own scrollable/
+  // ellipsized line), timestamps below. toLocaleString() renders in
+  // the VIEWER's local timezone; the server sends UTC ("...Z") on the
+  // wire so this conversion is always correct regardless of where the
+  // server itself runs.
+  const del = d.deletedAt ? `  ·  <span class="del">DELETED ${new Date(d.deletedAt).toLocaleString()}</span>` : '';
+  $('#meta').innerHTML = `<div class="id-line" title="${d.id}">${d.id}</div>` +
+    `<div class="dates-line">created ${new Date(d.createdAt).toLocaleString()}` +
+    `  ·  updated ${new Date(d.updatedAt).toLocaleString()}${del}</div>`;
+  $('#docview').innerHTML = highlight(JSON.stringify(d.doc, null, 2));
+  $('#btn-restore').style.display = d.deletedAt ? '' : 'none';
+  $('#btn-purge').style.display = d.deletedAt ? '' : 'none';
+  $('#btn-del').style.display = d.deletedAt ? 'none' : '';
+  $('#btn-soft').style.display = d.deletedAt ? 'none' : '';
+  status('');
+}
+function editMode(on) {
+  $('#docedit').style.display = on ? 'block' : 'none';
+  $('#docview').style.display = on ? 'none' : 'block';
+  $('#btn-save').style.display = on ? '' : 'none';
+  $('#btn-cancel').style.display = on ? '' : 'none';
+  $('#btn-edit').style.display = on ? 'none' : '';
+}
+
+$('#btn-copy').addEventListener('click', async () => {
+  // While editing, copy the IN-PROGRESS edit (docedit), not the
+  // last-saved doc still sitting in docview underneath it — otherwise
+  // a field you just changed silently doesn't make it into the clipboard.
+  const editing = $('#docedit').style.display !== 'none';
+  const text = editing ? $('#docedit').value : $('#docview').textContent;
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    status('copied to clipboard', 'ok');
+  } catch {
+    // clipboard API needs a secure context; localhost qualifies, but
+    // fall back to the selection trick just in case.
+    const target = editing ? $('#docedit') : $('#docview');
+    if (editing) { target.focus(); target.select(); }
+    else {
+      const r = document.createRange();
+      r.selectNodeContents(target);
+      getSelection().removeAllRanges();
+      getSelection().addRange(r);
+    }
+    status('select-all done — press Ctrl+C', 'ok');
+  }
+});
+$('#btn-edit').addEventListener('click', () => {
+  if (!docId) return;
+  $('#docedit').value = $('#docview').textContent;
+  editMode(true);
+});
+$('#btn-cancel').addEventListener('click', () => editMode(false));
+$('#btn-save').addEventListener('click', async () => {
+  try { JSON.parse($('#docedit').value); }
+  catch (e) { status('invalid JSON: ' + e.message, 'err'); return; }
+  try {
+    await api('PUT', `/api/doc?${qid(docId)}`, $('#docedit').value);
+    status('saved', 'ok');
+    openDoc(docId);
+    loadCollections();
+  } catch (e) { status(e.message, 'err'); }
+});
+const act = (method, path, confirmMsg) => async () => {
+  if (!docId || (confirmMsg && !confirm(confirmMsg))) return;
+  try {
+    await api(method, path());
+    status('done', 'ok');
+    docId = null; renderDoc(null);
+    loadCollections(); loadIds();
+  } catch (e) { status(e.message, 'err'); }
+};
+$('#btn-del').addEventListener('click', act('DELETE', () => `/api/doc?${qid(docId)}`, 'Hard-delete this document?'));
+$('#btn-soft').addEventListener('click', act('DELETE', () => `/api/doc?${qid(docId)}&soft=1`));
+$('#btn-restore').addEventListener('click', act('POST', () => `/api/restore?${qid(docId)}`));
+$('#btn-purge').addEventListener('click', act('POST', () => `/api/purge?${qid(docId)}`, 'Purge permanently?'));
+
+$('#idfilter').addEventListener('input', renderIds);
+$('#deleted-toggle-chk').addEventListener('change', (e) => {
+  showDeleted = e.target.checked;
+  loadIds();
+});
+
+$('#collections h1').addEventListener('click', () => location.reload());
+
+function showPane(name) {
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.pane === name));
+  document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('active', p.id === 'pane-' + name));
+}
+document.querySelectorAll('.tab').forEach((t) =>
+  t.addEventListener('click', () => showPane(t.dataset.pane)));
+
+$('#f-run').addEventListener('click', async () => {
+  if (!coll) { $('#findres').innerHTML = '<div class="empty">select a collection first</div>'; return; }
+  const q = `path=${encodeURIComponent($('#f-path').value)}&op=${encodeURIComponent($('#f-op').value)}` +
+    `&value=${encodeURIComponent($('#f-value').value)}&string=${$('#f-string').checked ? 1 : 0}&limit=100`;
+  try {
+    const hits = await api('GET', `/api/find?${qc()}&${q}`);
+    $('#findres').innerHTML = hits.length
+      ? hits.map((h) => `<div><span class="hit" data-id="${h.id}">── ${h.id}</span>\n${highlight(JSON.stringify(h.doc, null, 2))}</div>`).join('\n')
+      : '<div class="empty">no matches</div>';
+    bindHitLinks();
+  } catch (e) { $('#findres').innerHTML = `<div class="empty">${e.message}</div>`; }
+});
+[$('#f-path'), $('#f-value')].forEach((el) =>
+  el.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#f-run').click(); }));
+
+$('#sql-run').addEventListener('click', async () => {
+  try {
+    const rows = await api('POST', '/api/sql', JSON.stringify({ query: $('#sqlbox').value }));
+    $('#sqlres').innerHTML = Array.isArray(rows)
+      ? (rows.length ? rows.map((r) => highlight(JSON.stringify(r))).join('\n') : '<div class="empty">0 rows</div>')
+      : highlight(JSON.stringify(rows));
+  } catch (e) { $('#sqlres').innerHTML = `<div class="empty">${e.message}</div>`; }
+});
+
+loadCollections();
+setAutoRefresh(localStorage.getItem(AUTO_KEY) === '1');
+</script>
+</body>
+</html>

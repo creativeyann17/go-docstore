@@ -379,10 +379,10 @@ func (c *Collection) Meta(id string) (m Meta, err error) {
 	if err != nil {
 		return Meta{}, err
 	}
-	m.CreatedAt = time.UnixMilli(created)
-	m.UpdatedAt = time.UnixMilli(updated)
+	m.CreatedAt = time.UnixMilli(created).UTC()
+	m.UpdatedAt = time.UnixMilli(updated).UTC()
 	if deleted.Valid {
-		t := time.UnixMilli(deleted.Int64)
+		t := time.UnixMilli(deleted.Int64).UTC()
 		m.DeletedAt = &t
 	}
 	return m, nil

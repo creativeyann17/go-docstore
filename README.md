@@ -25,7 +25,9 @@ battle-tested storage engine in existence.
   no lost updates, in-process or across processes
 - **Indexed lookups** via SQLite generated columns over JSON paths
   (unique and case-insensitive variants) — documents stay schemaless
-- **`Find`** — search on JSON content (`= != < > like`)
+- **`Find`** — search on JSON content (`= != < > like`), literal SQLite json_extract paths
+- **`FindPath`** — friendlier search: index-free dotted paths (`loginHistory.at`, no `$.`,
+  no `[0]`); if the first segment is an array, EVERY element is searched, not just the first
 - **Metadata for free** — `created_at`/`updated_at` per document, `Meta(id)`
 - **Opt-in soft delete** — `Delete` marks, reads filter, `Restore`/`Purge`
 - **Files bridge** — `ImportDir`/`ImportFile` migrate a tree of JSON files
@@ -34,6 +36,9 @@ battle-tested storage engine in existence.
   microseconds and is never stale for a second process
 - **Optional debug logging** — one record per operation via `SetLogger`
 - **CLI** (`godocstore`) to browse, edit and search any go-docstore database
+- **Debug web UI** (`godocstore serve`) — JSON-first browser/editor: collections
+  nav, syntax-highlighted documents, inline editing (validated, transactional),
+  soft-delete lifecycle, Find and raw SQL tabs. Loopback-only by default (no auth)
 
 ## Installation
 
@@ -59,12 +64,14 @@ godocstore --db app.db ls users                    # document ids
 godocstore --db app.db get users u1 --meta         # pretty JSON + timestamps
 godocstore --db app.db put users u1 doc.json       # upsert (stdin when no file)
 godocstore --db app.db edit users u1               # $EDITOR round-trip, validated
-godocstore --db app.db find users '$.login' = yann # search JSON content
-godocstore --db app.db find users '$.quota' '>' 1000000 --ids
+godocstore --db app.db find users login = yann     # search JSON content
+godocstore --db app.db find users quota '>' 1000000 --ids
+godocstore --db app.db find users loginHistory.ip = 1.2.3.4  # any array entry, not just [0]
 godocstore --db app.db sql "SELECT id, json_extract(doc,'$.email') FROM c_users"
 godocstore --db app.db import users ./legacy-json/ # migrate files → documents
 godocstore --db app.db export users ./backup/      # documents → files
 godocstore --db app.db rm users u1 --soft          # mark; restore/purge undo it
+godocstore --db app.db serve                       # JSON-first debug web UI (loopback)
 ```
 
 ## Library usage
@@ -91,7 +98,8 @@ users.Update("u1", func(raw []byte) ([]byte, error) {
     return json.Marshal(cur)
 })
 
-docs, _ := users.Find("$.quota", ">", 100, 10)     // search
+docs, _ := users.Find("$.quota", ">", 100, 10)     // search (literal SQLite path)
+docs, _ = users.FindPath("loginHistory.ip", "=", "1.2.3.4", 10) // array-aware: any entry
 meta, _ := users.Meta("u1")                        // created/updated/deleted
 ```
 

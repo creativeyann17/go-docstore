@@ -15,17 +15,22 @@ var (
 )
 
 var findCmd = &cobra.Command{
-	Use:   "find <collection> <jsonpath> <op> <value>",
-	Short: "Search documents by a JSON path (op: = != < > like)",
-	Long: `Search documents by comparing a JSON path against a value.
+	Use:   "find <collection> <path> <op> <value>",
+	Short: "Search documents by a field path (op: = != < > like)",
+	Long: `Search documents by comparing a field path against a value. The
+path is dotted and index-free (no "$." prefix, no "[0]") — if the
+first segment is an array, every element is searched, not just the
+first: "loginHistory.at" matches ANY history entry with that field,
+and a bare "tags" matches if the value is a member of the array.
 
 The value is treated as a number when it parses as one (use --string to
 force text — e.g. a login that happens to be numeric).
 
 Examples:
-  godocstore --db mist.db find users '$.login' = yann
-  godocstore --db mist.db find users '$.usedBytes' '>' 1000000
-  godocstore --db mist.db find users '$.email' like '%@example.com'`,
+  godocstore --db mist.db find users login = yann
+  godocstore --db mist.db find users usedBytes '>' 1000000
+  godocstore --db mist.db find users email like '%@example.com'
+  godocstore --db mist.db find users loginHistory.at = 2026-06-15`,
 	Args: cobra.ExactArgs(4),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := openStore()
@@ -45,7 +50,7 @@ Examples:
 			}
 		}
 
-		docs, err := c.Find(args[1], args[2], value, findLimit)
+		docs, err := c.FindPath(args[1], args[2], value, findLimit)
 		if err != nil {
 			return err
 		}

@@ -20,3 +20,8 @@ dist/
 
 # OS
 .DS_Store
+
+# Stray databases from local serve/testing
+*.db
+*.db-wal
+*.db-shm
