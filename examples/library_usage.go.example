@@ -1,0 +1,75 @@
+// examples/library_usage.go.example
+// Rename to .go and `go run` to try the library end to end.
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+
+	"github.com/creativeyann17/go-docstore"
+)
+
+type User struct {
+	Login string `json:"login"`
+	Email string `json:"email"`
+	Quota int64  `json:"quota"`
+}
+
+func main() {
+	// 1. One file = one store; collections are created on demand.
+	store, err := docstore.Open("example.db")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer store.Close()
+
+	users, err := store.Collection("users",
+		docstore.WithUniqueIndex("login", "$.login"),
+		docstore.WithIndex("email", "$.email", true), // NOCASE
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// 2. CRUD by id — like files in a directory.
+	if err := users.Put("u1", User{Login: "yann", Email: "yann@example.com", Quota: 100}); err != nil {
+		log.Fatal(err)
+	}
+	var u User
+	if err := users.Get("u1", &u); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("loaded: %+v\n", u)
+
+	// 3. Indexed lookup — O(log n), case-insensitive on the email index.
+	if err := users.GetBy("email", "YANN@EXAMPLE.COM", &u); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("by email: %s\n", u.Login)
+
+	// 4. Transactional read-modify-write: safe against concurrent
+	// writers in this process AND other processes.
+	err = users.Update("u1", func(raw []byte) ([]byte, error) {
+		var cur User
+		if err := json.Unmarshal(raw, &cur); err != nil {
+			return nil, err
+		}
+		cur.Quota += 50
+		return json.Marshal(cur)
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// 5. Search on JSON content.
+	docs, err := users.Find("$.quota", ">", 100, 0)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("big quotas: %d match(es)\n", len(docs))
+
+	// 6. Metadata comes free.
+	meta, _ := users.Meta("u1")
+	fmt.Printf("created %s, updated %s\n", meta.CreatedAt, meta.UpdatedAt)
+}

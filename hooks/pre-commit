@@ -1,0 +1,4 @@
+#!/bin/sh
+# Format before every commit — install with `make install-hooks`.
+make fmt
+git add -u

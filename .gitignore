@@ -1,0 +1,22 @@
+# Build artifacts
+bin/
+dist/
+
+# Go
+*.test
+*.coverprofile
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# AI tooling
+.claude/
+
+# OS
+.DS_Store
